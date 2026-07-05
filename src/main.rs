@@ -2,7 +2,7 @@
 
 use std::iter::Map;
 use macroquad::prelude::*;
-// 9:14
+
 const MAP: usize = 20;
 const T_SIZE : (f32, f32) = (32., 16.);
 
@@ -17,13 +17,80 @@ enum Tile {
     Floor
 }
 
+//Math Helper
 fn to_screen(x: usize,y: usize, cam: (f32, f32)) -> (f32, f32) {
     (
         (x as f32 - y as f32) * T_SIZE.0 + cam.0,
         (x as f32 + y as f32) * T_SIZE.1 + cam.1,
-        )
+    )
 }
+//Dibujar cangrejo
+fn draw_crab(x: usize, y: usize, cam: (f32, f32)) {
+    let (sx, mut sy) = to_screen(x, y, cam);
+    sy += 8.;
 
+    // Sombra
+    draw_ellipse(
+        sx,
+        sy + 14.,
+        14.,
+        6.,
+        0.,
+        Color::new(0., 0., 0., 0.25),
+    );
+
+    // Cuerpo
+    draw_ellipse(sx, sy, 14., 10., 0., RED);
+
+    // Ojos
+    draw_line(sx - 5., sy - 8., sx - 5., sy - 14., 2., BLACK);
+    draw_line(sx + 5., sy - 8., sx + 5., sy - 14., 2., BLACK);
+
+    draw_circle(sx - 5., sy - 15., 2.5, WHITE);
+    draw_circle(sx + 5., sy - 15., 2.5, WHITE);
+
+    draw_circle(sx - 5., sy - 15., 1., BLACK);
+    draw_circle(sx + 5., sy - 15., 1., BLACK);
+
+    // Pinzas
+    draw_line(sx - 10., sy - 2., sx - 18., sy - 8., 2., RED);
+    draw_line(sx - 18., sy - 8., sx - 22., sy - 4., 2., RED);
+    draw_line(sx - 18., sy - 8., sx - 22., sy - 12., 2., RED);
+
+    draw_line(sx + 10., sy - 2., sx + 18., sy - 8., 2., RED);
+    draw_line(sx + 18., sy - 8., sx + 22., sy - 4., 2., RED);
+    draw_line(sx + 18., sy - 8., sx + 22., sy - 12., 2., RED);
+
+    // Patas
+    for i in 0..3 {
+        let o = i as f32 * 3.;
+
+        draw_line(sx - 8., sy + o, sx - 16., sy + 5. + o, 2., RED);
+        draw_line(sx + 8., sy + o, sx + 16., sy + 5. + o, 2., RED);
+    }
+}
+//draw hero and monsters
+fn draw_stickman(x: usize, y:usize, cam: (f32,f32)){
+    let (sx, mut sy) = to_screen(x,y,cam);
+    sy += 16.;
+
+    //shadow
+    draw_ellipse(sx, sy + 3., 10., 5., 0., Color::new(0.,0.,0.,0.2));
+
+    //head
+    draw_circle_lines(sx, sy - 32., 7., 2., BLACK);
+
+    //body and limbs
+    for l in [
+        [0., -25., 0., -8.],
+        [0., -20., -8., -15.],
+        [0., -20., 8., -15.],
+        [0., -8., -6., 0.],
+        [0., -8., 6., 0.],
+    ]{
+        draw_line(sx + l[0], sy + l[1], sx + l[2], sy + l[3], 2., BLACK);
+    }
+}
 fn draw_wall (x: usize, y: usize, cam: (f32, f32)) {
     let (sx, sy) = to_screen(x,y,cam);
 
@@ -59,7 +126,9 @@ fn draw_wall (x: usize, y: usize, cam: (f32, f32)) {
 
 struct Game {
     map: [[Tile;MAP]; MAP],
-    cam:  (f32, f32)
+    cam:  (f32, f32),
+    px: usize,
+    py: usize
 }
 
 impl Game {
@@ -80,7 +149,9 @@ impl Game {
 
         Game{
             map,
-            cam: (screen_width() / 2., 50.)
+            cam: (screen_width() / 2., 50.),
+            px: 2,
+            py: 2
         }
     }
 
@@ -103,6 +174,8 @@ impl Game {
                 }
             }
         }
+        //draw the crab
+        draw_crab(self.px, self.py, self.cam);
     }
 }
 #[macroquad::main("Crablo")]
