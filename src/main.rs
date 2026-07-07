@@ -18,6 +18,14 @@ enum Tile {
     Floor
 }
 
+//Monsters (C++)
+struct Monster{
+    x: usize,
+    y: usize,
+    hp: i32,
+    cd: i32,
+}
+
 //Math Helper
 fn to_screen(x: usize,y: usize, cam: (f32, f32)) -> (f32, f32) {
     (
@@ -116,27 +124,43 @@ fn draw_crab(x: usize, y: usize, cam: (f32, f32)) {
         draw_line(sx + 8., sy + o, sx + 16., sy + 5. + o, 2., RED);
     }
 }
-//draw hero and monsters
-fn draw_stickman(x: usize, y:usize, cam: (f32,f32)){
-    let (sx, mut sy) = to_screen(x,y,cam);
-    sy += 16.;
 
-    //shadow
-    draw_ellipse(sx, sy + 3., 10., 5., 0., Color::new(0.,0.,0.,0.2));
+//draw c++
+fn draw_enemy(x: usize, y: usize, cam: (f32, f32)) {
+    let (sx, sy) = to_screen(x, y, cam);
+    let r = 18.0;
 
-    //head
-    draw_circle_lines(sx, sy - 32., 7., 2., BLACK);
+    // Fondo azul (hexágono)
+    draw_poly(
+        sx,
+        sy,
+        6,
+        r,
+        30.0_f32.to_radians(),
+        Color::new(0.0, 0.45, 0.95, 1.0),
+    );
 
-    //body and limbs
-    for l in [
-        [0., -25., 0., -8.],
-        [0., -20., -8., -15.],
-        [0., -20., 8., -15.],
-        [0., -8., -6., 0.],
-        [0., -8., 6., 0.],
-    ]{
-        draw_line(sx + l[0], sy + l[1], sx + l[2], sy + l[3], 2., BLACK);
-    }
+    // Borde
+    draw_poly_lines(
+        sx,
+        sy,
+        6,
+        r,
+        30.0_f32.to_radians(),
+        2.0,
+        BLACK,
+    );
+
+    // Letra C
+    draw_text("C", sx - 12.0, sy + 8.0, 26.0, WHITE);
+
+    // Primer +
+    draw_line(sx + 5.0, sy - 1.0, sx + 5.0, sy + 3.0, 1.0, WHITE);
+    draw_line(sx + 3.0, sy + 1.0, sx + 7.0, sy + 1.0, 1.0, WHITE);
+
+    // Segundo +
+    draw_line(sx + 10.0, sy - 1.0, sx + 10.0, sy + 3.0, 1.0, WHITE);
+    draw_line(sx + 8.0, sy + 1.0, sx + 12.0, sy + 1.0, 1.0, WHITE);
 }
 fn draw_wall (x: usize, y: usize, cam: (f32, f32)) {
     let (sx, sy) = to_screen(x,y,cam);
@@ -170,7 +194,6 @@ fn draw_wall (x: usize, y: usize, cam: (f32, f32)) {
         draw_line(v[a].x, v[a].y, v[b].x, v[b].y, 1., BLACK);
     }
 }
-
 struct Game {
     map: [[Tile;MAP]; MAP],
     cam:  (f32, f32),
@@ -178,6 +201,7 @@ struct Game {
     py: usize,
     path: Vec<(usize, usize)>,
     player_cd: f32,
+    monsters: Vec<Monster>,
 }
 
 impl Game {
@@ -203,6 +227,11 @@ impl Game {
             py: 2,
             path: vec![],
             player_cd: 0.,
+            monsters: vec![
+                Monster {x: 8, y:8, hp: 30, cd: 0},
+                Monster {x: 12, y:4, hp: 30, cd: 0},
+                Monster {x: 15, y:12, hp: 30, cd: 0},
+            ]
         }
     }
 
@@ -230,7 +259,7 @@ impl Game {
             //time to move?
             if self.player_cd <= 0.{
                 self.player_cd = 0.15;
-                
+
                 let next_step= self.path[0];
                 self.px = next_step.0;
                 self.py = next_step.1;
@@ -261,6 +290,11 @@ impl Game {
 
         //draw the crab
         draw_crab(self.px, self.py, self.cam);
+
+        //draw c++
+        for m in &self.monsters {
+            draw_enemy(m.x, m.y, self.cam);
+        }
     }
 }
 #[macroquad::main("Crablo")]
