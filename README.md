@@ -1,23 +1,35 @@
-# Diablo-like RPG in Rust 🦀
+# 🦀 Crablo
 
-A learning project focused on building a Diablo-inspired action RPG using Rust. The goal is to explore game development concepts while applying Rust's ownership model, traits, modules, and performance-oriented design.
+**Crablo** es un pequeño roguelike de acción con perspectiva isométrica desarrollado en **Rust** usando **Macroquad**. Nació como un proyecto para aprender desarrollo de videojuegos mientras se exploran conceptos como pathfinding, IA, gestión de estados y arquitectura de juegos.
 
-## Features (Planned)
+## ✨ Características
 
-* Fast-paced combat system
-* Character classes and progression
-* Inventory and equipment
-* Loot generation
-* Enemies with different behaviors
-* Skills and abilities
-* Procedurally generated maps
-* Save and load system
+* 🎮 Menú principal, partida y pantalla de Game Over.
+* 🖱️ Movimiento por clic con **Breadth-First Search (BFS)**.
+* ⚔️ Combate cuerpo a cuerpo con sistema de *cooldown*.
+* 🤖 Enemigos con IA que persiguen al jugador utilizando **BFS**.
+* 💰 Monedas coleccionables y sistema de puntuación.
+* ❤️ HUD con vida y puntuación en tiempo real.
+* 💥 Textos flotantes para daño y recolección de monedas.
+* 🧱 Mapas estáticos con obstáculos y muros diseñados manualmente.
+* 🦀 Protagonista inspirado en un cangrejo y enemigos inspirados en el logo de **C++**.
 
-## Tech Stack
+## 🚀 Tecnologías
 
-* **Language:** Rust
-* **Build Tool:** Cargo
-* **Version Control:** Git
+* **Rust**
+* **Macroquad**
+* **Cargo**
+
+## 📌 Objetivos del proyecto
+
+Crablo está pensado como una base sobre la cual seguir construyendo un ARPG inspirado en juegos como *Diablo*. Algunas características planeadas incluyen:
+
+* 📦 Sistema de inventario.
+* 🛡️ Equipamiento y loot.
+* 🧙 Clases y habilidades.
+* 👹 Nuevos enemigos y jefes.
+* 🗺️ Generación procedural de mapas.
+* 💾 Sistema de guardado.
 
 ## Project Structure
 
@@ -33,32 +45,25 @@ A learning project focused on building a Diablo-inspired action RPG using Rust. 
 
 ## Getting Started
 
-Clone the repository:
+Clonar el repositorio:
 
 ```bash
 git clone <repository-url>
 cd <project-folder>
 ```
 
-Build the project:
+Construir el proyecto:
 
 ```bash
 cargo build
 ```
 
-Run the project:
+Correr el Proyecto:
 
 ```bash
 cargo run
 ```
 
-## Goals
+## 📖 Estado
 
-* Learn Rust through a real-world project.
-* Apply clean architecture and modular design.
-* Practice ownership, borrowing, traits, and error handling.
-* Build a playable action RPG inspired by classic Diablo games.
-
-## Status
-
-🚧 This project is currently in early development.
+🚧 Proyecto en desarrollo activo. Nuevas mecánicas y contenido se añadirán progresivamente.
