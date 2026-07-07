@@ -3,6 +3,7 @@
 //use std::iter::Map;
 use macroquad::prelude::*;
 use std::collections::VecDeque;
+//use std::fs::read_dir;
 
 const MAP: usize = 20;
 const T_SIZE : (f32, f32) = (32., 16.);
@@ -23,7 +24,15 @@ struct Monster{
     x: usize,
     y: usize,
     hp: i32,
-    cd: i32,
+    cd: f32,
+}
+
+//struct for Floating text
+struct DmgText{
+    x: f32,
+    y: f32,
+    dmg: i32,
+    life: f32,
 }
 
 //Math Helper
@@ -40,6 +49,11 @@ fn to_tile(sx: f32, sy: f32, cam: (f32, f32)) -> (usize, usize){
         ((ax / T_SIZE.0 + ay / T_SIZE.1) / 2.) as usize,
         ((ay / T_SIZE.1 - ax / T_SIZE.0) / 2.) as usize,
         )
+}
+
+//calculate distance Manhattan distance
+fn dist(p1: (usize, usize), p2: (usize, usize)) -> i32{
+    (p1.0 as i32 - p2.0 as i32).abs() + (p1.1 as i32 - p2.1 as i32).abs()
 }
 
 //Pathfinding algorithm
@@ -202,6 +216,8 @@ struct Game {
     path: Vec<(usize, usize)>,
     player_cd: f32,
     monsters: Vec<Monster>,
+    texts: Vec<DmgText>,
+    hp: i32,
 }
 
 impl Game {
@@ -228,18 +244,27 @@ impl Game {
             path: vec![],
             player_cd: 0.,
             monsters: vec![
-                Monster {x: 8, y:8, hp: 30, cd: 0},
-                Monster {x: 12, y:4, hp: 30, cd: 0},
-                Monster {x: 15, y:12, hp: 30, cd: 0},
-            ]
+                Monster {x: 8, y:8, hp: 30, cd: 0.},
+                Monster {x: 12, y:4, hp: 30, cd: 0.},
+                Monster {x: 15, y:12, hp: 30, cd: 0.},
+            ],
+            texts: vec![],
+            hp: 100,
         }
     }
 
     fn update(&mut self, dt:f32) -> bool {
-        //fake gaming logic
-        if is_key_pressed(KeyCode::Space) {
+        //if the player dies the game is over
+        if self.hp <= 0 {
             return true;
         }
+
+        //Update text animations
+        self.texts.retain_mut(|t| {
+            t.life -= dt;
+            t.y -= 20. * dt;
+            t.life > 0.
+        });
 
         //mouse input logic
         if is_mouse_button_pressed(MouseButton::Left){
@@ -260,14 +285,79 @@ impl Game {
             if self.player_cd <= 0.{
                 self.player_cd = 0.15;
 
-                let next_step= self.path[0];
-                self.px = next_step.0;
-                self.py = next_step.1;
-                self.path.remove(0);
+                let(nx, ny) = self.path[0];
+
+                //Combat logic for the player
+                if let Some(i) = self.monsters.iter().position(|m| m.x == nx && m.y == ny){
+                    //attack
+                    self.damage_monster(i, 10);
+                    //stop moving
+                    self.path.clear();
+                } else {
+                    //move
+                    self.path.remove(0);
+                    self.px = nx;
+                    self.py = ny;
+                }
+            }
+        }
+
+        //Monster Logic
+        //Calculate the occupied spots so enemies don't stack
+        let occupied: Vec<_> = self
+            .monsters
+            .iter()
+            .map(|m|(m.x, m.y))
+            .chain(std::iter::once((self.px, self.py)))
+            .collect();
+
+        for i in 0..self.monsters.len(){
+            self.monsters[i].cd -= dt;
+            if self.monsters[i].cd <= 0.{
+                self.monsters[i].cd = 1.0; //slow
+
+                let (mx, my) = (self.monsters[i].x, self.monsters[i].y);
+                let d = dist((mx,my), (self.px,self.py));
+
+                if d == 1{
+                    self.hp -= 5;
+                    let (sx, sy) = to_screen(self.px, self.py, self.cam);
+                    self.texts.push(DmgText{
+                        x: sx,
+                        y: sy - 40.,
+                        dmg: 5,
+                        life:1.,
+                    });
+                } else {
+                    //chase the player
+                    let path = bfs(&self.map, (mx,my), (self.px, self.py) );
+                    if path.len() > 1 && !occupied.contains(&path[0]){
+                        self.monsters[i].x = path[0].0;
+                        self.monsters[i].y = path[0].1;
+                    }
+                }
             }
         }
 
         false
+    }
+
+    fn damage_monster(&mut self, idx: usize, amount: i32) {
+        self.monsters[idx].hp -= amount;
+
+        //spawn text
+        let (sx, sy) = to_screen(self.monsters[idx].x, self.monsters[idx].y, self.cam);
+        self.texts.push(DmgText{
+            x: sx,
+            y: sy -40.,
+            dmg: amount,
+            life: 1.,
+        });
+
+        //kill logic
+        if self.monsters[idx].hp <= 0 {
+            self.monsters.remove(idx);
+        }
     }
 
     fn draw(&self) {
@@ -295,6 +385,14 @@ impl Game {
         for m in &self.monsters {
             draw_enemy(m.x, m.y, self.cam);
         }
+
+        //draw floating texts
+        for t in &self.texts {
+            draw_text(&format!("-{}", t.dmg), t.x, t.y, 20., RED);
+        }
+
+        //HUD
+        draw_text(&format!("HP: {}", self.hp), 20., screen_height() - 40., 30., BLACK);
     }
 }
 #[macroquad::main("Crablo")]
@@ -329,7 +427,10 @@ async fn main() {
                     Color::new(1., 1., 1., 0.7)
                 );
                 draw_text("Game Over", 100., 100., 60., RED);
-                draw_text("Enter to Reset", 100., 150., 20., GRAY);
+
+                draw_text(&format!("HP: {}", game.hp), 100., 140., 30., BLACK);
+
+                draw_text("Enter to Reset", 100., 170., 20., GRAY);
 
                 if is_key_pressed(KeyCode::Enter) {
                     state = AppState::Menu;
