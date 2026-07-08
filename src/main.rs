@@ -1,41 +1,58 @@
-#![allow(dead_code)]
+#![allow(dead_code)] //Es un atributo que hace que no se muestre advertencias si existen funciones o variables sin usar
 
-//use std::iter::Map;
-use macroquad::prelude::*;
-use std::collections::VecDeque;
-//use std::fs::read_dir;
+use macroquad::prelude::*; //Importar métodos importantes de macroquad
+use std::collections::VecDeque; //Estructura que emula una cola (Queue)
 
+//Mapa de 20x20 casillas
 const MAP: usize = 20;
+
+/*
+Cada casilla está definida por floats
+ancho = 32 px
+alto = 16 px
+ */
 const T_SIZE : (f32, f32) = (32., 16.);
 
+//Posibles estados del juego, no puede estar en dos al tiempo
 enum AppState {
     Menu,
     Playing,
     GameOver
 }
+
+/*
+Atributo que le dice a Rust que permita tres comportamientos:
+-Copy: permite copiar un tile haciendo esto
+    let a = Tile::Wall;
+    let b = a;
+-Clone: permite hacer tile.clone()
+-PartialEq: permite comprar Tiles
+    if tile == Tile::wall;
+El enum muestra lo que puede ser cada casilla
+ */
 #[derive(Copy, Clone, PartialEq)]
 enum Tile {
     Wall,
     Floor
 }
 
-//Monsters (C++)
+//Monstruo representados por (C++)
 struct Monster{
-    x: usize,
-    y: usize,
-    hp: i32,
-    cd: f32,
+    x: usize, //Posición Horizontal en el mapa
+    y: usize, //Posición Vertical en el mapa
+    hp: i32, //Vida del enemigo
+    cd: f32, //Cooldown del enemigo
 }
 
-//struct for Floating text
+//Representa un texto flotante
 struct DmgText{
-    x: f32,
-    y: f32,
-    dmg: i32,
-    life: f32,
+    x: f32, //Posición Horizontal en pantalla
+    y: f32, //Posición Vertical en pantalla
+    dmg: i32, //Número a mostrar
+    life: f32, //Tiempo antes de desaparecer
 }
 
-//Math Helper
+//Convierte casilla del mapa en posición en la pantalla
 fn to_screen(x: usize,y: usize, cam: (f32, f32)) -> (f32, f32) {
     (
         (x as f32 - y as f32) * T_SIZE.0 + cam.0,
