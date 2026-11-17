@@ -1,528 +1,290 @@
-#![allow(dead_code)] //Es un atributo que hace que no se muestre advertencias si existen funciones o variables sin usar
+mod art;
+mod game;
+mod levels;
 
-use macroquad::prelude::*; //Importar métodos importantes de macroquad
-use std::collections::VecDeque; //Estructura que emula una cola (Queue)
+use art::*;
+use art::{BLUE, LIME, PURPLE};
+use game::{Game, Outcome};
+use macroquad::prelude::*;
 
-//Mapa de 20x20 casillas
-const MAP: usize = 20;
-
-/*
-Cada casilla está definida por floats
-ancho = 32 px
-alto = 16 px
- */
-const T_SIZE: (f32, f32) = (32., 16.);
-
-//Posibles estados del juego, no puede estar en dos al tiempo
+#[derive(Clone, Copy)]
 enum AppState {
     Menu,
     Playing,
+    Paused,
+    LevelClear,
+    Victory,
     GameOver,
 }
 
-/*
-Atributo que le dice a Rust que permita tres comportamientos:
--Copy: permite copiar un tile haciendo esto
-    let a = Tile::Wall;
-    let b = a;
--Clone: permite hacer tile.clone()
--PartialEq: permite comprar Tiles
-    if tile == Tile::wall;
-El enum muestra lo que puede ser cada casilla
- */
-#[derive(Copy, Clone, PartialEq)]
-enum Tile {
-    Wall,
-    Floor,
-}
-
-//Monstruo representados por (C++)
-struct Monster {
-    x: usize, //Posición Horizontal en el mapa
-    y: usize, //Posición Vertical en el mapa
-    hp: i32,  //Vida del enemigo
-    cd: f32,  //Cooldown del enemigo
-}
-
-//Representa un texto flotante
-struct DmgText {
-    x: f32,    //Posición Horizontal en pantalla
-    y: f32,    //Posición Vertical en pantalla
-    dmg: i32,  //Número a mostrar
-    life: f32, //Tiempo antes de desaparecer
-}
-
-//Convierte casilla del mapa en posición en la pantalla
-fn to_screen(x: usize, y: usize, cam: (f32, f32)) -> (f32, f32) {
-    (
-        (x as f32 - y as f32) * T_SIZE.0 + cam.0,
-        (x as f32 + y as f32) * T_SIZE.1 + cam.1,
-    )
-}
-
-fn to_tile(sx: f32, sy: f32, cam: (f32, f32)) -> (usize, usize) {
-    let (ax, ay) = (sx - cam.0, sy - cam.1);
-    (
-        ((ax / T_SIZE.0 + ay / T_SIZE.1) / 2.) as usize,
-        ((ay / T_SIZE.1 - ax / T_SIZE.0) / 2.) as usize,
-    )
-}
-
-//calculate distance Manhattan distance
-fn dist(p1: (usize, usize), p2: (usize, usize)) -> i32 {
-    (p1.0 as i32 - p2.0 as i32).abs() + (p1.1 as i32 - p2.1 as i32).abs()
-}
-
-//Pathfinding algorithm
-fn bfs(
-    map: &[[Tile; MAP]; MAP],
-    start: (usize, usize),
-    goal: (usize, usize),
-) -> Vec<(usize, usize)> {
-    let mut q = VecDeque::from([start]);
-    let mut visited = [[false; MAP]; MAP];
-    visited[start.1][start.0] = true;
-
-    let mut parent = [[None; MAP]; MAP];
-
-    while let Some(curr) = q.pop_front() {
-        if curr == goal {
-            let mut path = vec![];
-            let mut c = goal;
-            while c != start {
-                path.push(c);
-                c = parent[c.1][c.0].unwrap();
-            }
-            path.reverse();
-            return path;
-        }
-
-        //check the close
-        for (dx, dy) in [(0, -1), (0, 1), (-1, 0), (1, 0)] {
-            let (nx, ny) = ((curr.0 as i32 + dx) as usize, (curr.1 as i32 + dy) as usize);
-
-            if nx < MAP && ny < MAP && !visited[ny][nx] && map[ny][nx] == Tile::Floor {
-                visited[ny][nx] = true;
-                parent[ny][nx] = Some(curr);
-                q.push_back((nx, ny));
-            }
-        }
-    }
-    vec![]
-}
-//Dibujar cangrejo
-fn draw_crab(x: usize, y: usize, cam: (f32, f32)) {
-    let (sx, mut sy) = to_screen(x, y, cam);
-    sy += 8.;
-
-    // Sombra
-    draw_ellipse(sx, sy + 14., 14., 6., 0., Color::new(0., 0., 0., 0.25));
-
-    // Cuerpo
-    draw_ellipse(sx, sy, 14., 10., 0., RED);
-
-    // Ojos
-    draw_line(sx - 5., sy - 8., sx - 5., sy - 14., 2., BLACK);
-    draw_line(sx + 5., sy - 8., sx + 5., sy - 14., 2., BLACK);
-
-    draw_circle(sx - 5., sy - 15., 2.5, WHITE);
-    draw_circle(sx + 5., sy - 15., 2.5, WHITE);
-
-    draw_circle(sx - 5., sy - 15., 1., BLACK);
-    draw_circle(sx + 5., sy - 15., 1., BLACK);
-
-    // Pinzas
-    draw_line(sx - 10., sy - 2., sx - 18., sy - 8., 2., RED);
-    draw_line(sx - 18., sy - 8., sx - 22., sy - 4., 2., RED);
-    draw_line(sx - 18., sy - 8., sx - 22., sy - 12., 2., RED);
-
-    draw_line(sx + 10., sy - 2., sx + 18., sy - 8., 2., RED);
-    draw_line(sx + 18., sy - 8., sx + 22., sy - 4., 2., RED);
-    draw_line(sx + 18., sy - 8., sx + 22., sy - 12., 2., RED);
-
-    // Patas
-    for i in 0..3 {
-        let o = i as f32 * 3.;
-
-        draw_line(sx - 8., sy + o, sx - 16., sy + 5. + o, 2., RED);
-        draw_line(sx + 8., sy + o, sx + 16., sy + 5. + o, 2., RED);
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "Crablo - La gran fuga".into(),
+        window_width: 1280,
+        window_height: 800,
+        fullscreen: false,
+        high_dpi: true,
+        window_resizable: true,
+        sample_count: 1,
+        ..Default::default()
     }
 }
 
-//draw c++
-fn draw_enemy(x: usize, y: usize, cam: (f32, f32)) {
-    let (sx, sy) = to_screen(x, y, cam);
-    let r = 18.0;
+fn menu(art: &Art, selected: &mut usize, fullscreen: &mut bool, mouse: Vec2, time: f32) -> bool {
+    backdrop(time);
+    text("CRABLO", 31., 56., 6., color_u8!(56, 69, 56, 255));
+    text("CRABLO", 28., 51., 6., LIME);
+    text("LA GRAN FUGA", 32., 106., 2., PURPLE);
+    text("ELIGE TU PERSONAJE", 32., 158., 1., INK);
 
-    // Fondo azul (hexágono)
-    draw_poly(
-        sx,
-        sy,
-        6,
-        r,
-        30.0_f32.to_radians(),
-        Color::new(0.0, 0.45, 0.95, 1.0),
+    for (i, character) in [2, 1].iter().enumerate() {
+        let rect = Rect::new(32. + i as f32 * 130., 178., 118., 86.);
+        let color = if *character == 2 { CORAL } else { BLUE };
+        let chosen = selected == character;
+        let hover = rect.contains(mouse);
+        panel(
+            rect,
+            if chosen {
+                color
+            } else if hover {
+                INK
+            } else {
+                EDGE
+            },
+        );
+        art.actor(
+            vec2(rect.x + 27., rect.y + 58.),
+            *character,
+            4,
+            true,
+            time,
+            2.,
+            WHITE,
+        );
+        text(
+            if *character == 2 { "ROJO" } else { "AZUL" },
+            rect.x + 57.,
+            rect.y + 24.,
+            1.,
+            color,
+        );
+        text(
+            if chosen { "> LISTO" } else { "ELEGIR" },
+            rect.x + 57.,
+            rect.y + 44.,
+            1.,
+            if chosen { INK } else { MUTED },
+        );
+        if hover && is_mouse_button_pressed(MouseButton::Left) {
+            *selected = *character;
+        }
+    }
+    if is_key_pressed(KeyCode::Left) || is_key_pressed(KeyCode::A) || is_key_pressed(KeyCode::Key1)
+    {
+        *selected = 2;
+    }
+    if is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::D) || is_key_pressed(KeyCode::Key2)
+    {
+        *selected = 1;
+    }
+    let start = button(Rect::new(32., 287., 248., 31.), "JUGAR", mouse, LIME);
+    centered(
+        "ENTER PARA JUGAR   /   1 ROJO - 2 AZUL",
+        156.,
+        335.,
+        1.,
+        MUTED,
     );
 
-    // Borde
-    draw_poly_lines(sx, sy, 6, r, 30.0_f32.to_radians(), 2.0, BLACK);
-
-    // Letra C
-    draw_text("C", sx - 12.0, sy + 8.0, 26.0, WHITE);
-
-    // Primer +
-    draw_line(sx + 5.0, sy - 1.0, sx + 5.0, sy + 3.0, 1.0, WHITE);
-    draw_line(sx + 3.0, sy + 1.0, sx + 7.0, sy + 1.0, 1.0, WHITE);
-
-    // Segundo +
-    draw_line(sx + 10.0, sy - 1.0, sx + 10.0, sy + 3.0, 1.0, WHITE);
-    draw_line(sx + 8.0, sy + 1.0, sx + 12.0, sy + 1.0, 1.0, WHITE);
-}
-fn draw_wall(x: usize, y: usize, cam: (f32, f32)) {
-    let (sx, sy) = to_screen(x, y, cam);
-
-    let v = [
-        vec2(sx, sy - 40.),
-        vec2(sx + 32., sy - 24.),
-        vec2(sx, sy - 8.),
-        vec2(sx - 32., sy - 24.),
-        vec2(sx + 32., sy),
-        vec2(sx, sy + 16.),
-        vec2(sx - 32., sy),
-    ];
-
-    let colors = [
-        Color::new(0.8, 0.8, 0.8, 1.),
-        Color::new(0.5, 0.5, 0.5, 1.),
-        Color::new(0.6, 0.6, 0.6, 1.),
-    ];
-
-    //draw faces
-    draw_triangle(v[0], v[1], v[2], colors[0]);
-    draw_triangle(v[0], v[2], v[3], colors[0]);
-    draw_triangle(v[1], v[4], v[5], colors[1]);
-    draw_triangle(v[1], v[5], v[2], colors[1]);
-    draw_triangle(v[3], v[2], v[5], colors[2]);
-    draw_triangle(v[3], v[5], v[6], colors[2]);
-
-    //draw outline
-    for (a, b) in [(0, 1), (1, 2), (2, 3), (3, 0), (1, 4), (2, 5), (3, 6)] {
-        draw_line(v[a].x, v[a].y, v[b].x, v[b].y, 1., BLACK);
+    // A small animated diorama built from the same tiles and sprites as the game.
+    let origin = vec2(468., 168. + (time * 0.8).sin() * 3.);
+    for depth in 0..13 {
+        for y in 0..7 {
+            if depth < y || depth - y >= 7 {
+                continue;
+            }
+            let x = depth - y;
+            let p = iso((x, y), origin);
+            art.tile(p, 0, true, 1.);
+            if (x, y) == (0, 1) || (x, y) == (5, 0) || (x, y) == (6, 5) {
+                art.tile(p - vec2(0., 18.), 0, true, 1.);
+            }
+            if (x, y) == (2, 2) || (x, y) == (4, 4) {
+                diamond(p - vec2(0., 23.), 3., 5., GOLD);
+            }
+            if (x, y) == (3, 3) {
+                art.actor(p - vec2(0., 18.), *selected, 4, true, time, 2., WHITE);
+            }
+            if (x, y) == (1, 4) || (x, y) == (5, 2) {
+                art.actor(p - vec2(0., 18.), 0, 4, true, time + 0.5, 1., WHITE);
+            }
+        }
     }
-}
-struct Game {
-    map: [[Tile; MAP]; MAP],
-    cam: (f32, f32),
-    px: usize,
-    py: usize,
-    path: Vec<(usize, usize)>,
-    player_cd: f32,
-    monsters: Vec<Monster>,
-    texts: Vec<DmgText>,
-    hp: i32,
-    gold: Vec<(usize, usize)>,
-    score: i32,
+    if button(
+        Rect::new(352., 320., 250., 24.),
+        if *fullscreen {
+            "MODO VENTANA"
+        } else {
+            "PANTALLA COMPLETA"
+        },
+        mouse,
+        MUTED,
+    ) {
+        *fullscreen = !*fullscreen;
+        set_fullscreen(*fullscreen);
+    }
+    draw_line(32., 377., 608., 377., 1., EDGE);
+    text("CLIC PARA CAMINAR Y ATACAR", 32., 386., 1., MUTED);
+    text("F11: PANTALLA COMPLETA", 464., 386., 1., MUTED);
+    start || is_key_pressed(KeyCode::Enter)
 }
 
-impl Game {
-    fn new() -> Self {
-        let mut map = [[Tile::Floor; MAP]; MAP];
-
-        for i in 0..MAP {
-            map[0][i] = Tile::Wall;
-            map[MAP - 1][i] = Tile::Wall;
-            map[i][0] = Tile::Wall;
-            map[i][MAP - 1] = Tile::Wall;
-        }
-
-        //add obstacles
-        for (x, y) in [(5, 5), (6, 5), (12, 10)] {
-            map[y][x] = Tile::Wall;
-        }
-
-        Game {
-            map,
-            cam: (screen_width() / 2., 50.),
-            px: 2,
-            py: 2,
-            path: vec![],
-            player_cd: 0.,
-            monsters: vec![
-                Monster {
-                    x: 8,
-                    y: 8,
-                    hp: 30,
-                    cd: 0.,
-                },
-                Monster {
-                    x: 12,
-                    y: 4,
-                    hp: 30,
-                    cd: 0.,
-                },
-                Monster {
-                    x: 15,
-                    y: 12,
-                    hp: 30,
-                    cd: 0.,
-                },
-            ],
-            texts: vec![],
-            hp: 100,
-            gold: vec![(3, 3), (10, 2), (16, 5), (6, 14), (17, 17)],
-            score: 0,
-        }
-    }
-
-    fn update(&mut self, dt: f32) -> bool {
-        //if the player dies the game is over
-        if self.hp <= 0 || self.monsters.is_empty() {
-            return true;
-        }
-
-        //Update text animations
-        self.texts.retain_mut(|t| {
-            t.life -= dt;
-            t.y -= 20. * dt;
-            t.life > 0.
-        });
-
-        //mouse input logic
-        if is_mouse_button_pressed(MouseButton::Left) {
-            let (mx, my) = mouse_position();
-            let (tx, ty) = to_tile(mx, my, self.cam);
-
-            //check if the click is inside the map bounds
-            if tx < MAP && ty < MAP && self.map[ty][tx] == Tile::Floor {
-                self.path = bfs(&self.map, (self.px, self.py), (tx, ty));
-            }
-        }
-
-        //handle movement for the player
-        if !self.path.is_empty() {
-            self.player_cd -= dt;
-
-            //time to move?
-            if self.player_cd <= 0. {
-                self.player_cd = 0.15;
-
-                let (nx, ny) = self.path[0];
-
-                //Combat logic for the player
-                if let Some(i) = self.monsters.iter().position(|m| m.x == nx && m.y == ny) {
-                    //attack
-                    self.damage_monster(i, 10);
-                    //stop moving
-                    self.path.clear();
-                } else {
-                    //move
-                    self.path.remove(0);
-                    self.px = nx;
-                    self.py = ny;
-
-                    //collect gold logic
-                    if let Some(i) = self.gold.iter().position(|&g| g == (self.px, self.py)) {
-                        self.gold.remove(i);
-                        self.score += 100;
-
-                        //spawn green text
-                        let (sx, sy) = to_screen(self.px, self.py, self.cam);
-                        self.texts.push(DmgText {
-                            x: sx,
-                            y: sy - 40.,
-                            dmg: -100,
-                            life: 1.,
-                        });
-                    }
-                }
-            }
-        }
-
-        //Monster Logic
-        //Calculate the occupied spots so enemies don't stack
-        let occupied: Vec<_> = self
-            .monsters
-            .iter()
-            .map(|m| (m.x, m.y))
-            .chain(std::iter::once((self.px, self.py)))
-            .collect();
-
-        for i in 0..self.monsters.len() {
-            self.monsters[i].cd -= dt;
-            if self.monsters[i].cd <= 0. {
-                self.monsters[i].cd = 1.0; //slow
-
-                let (mx, my) = (self.monsters[i].x, self.monsters[i].y);
-                let d = dist((mx, my), (self.px, self.py));
-
-                if d == 1 {
-                    self.hp -= 5;
-                    let (sx, sy) = to_screen(self.px, self.py, self.cam);
-                    self.texts.push(DmgText {
-                        x: sx,
-                        y: sy - 40.,
-                        dmg: 5,
-                        life: 1.,
-                    });
-                } else {
-                    //chase the player
-                    let path = bfs(&self.map, (mx, my), (self.px, self.py));
-                    if path.len() > 1 && !occupied.contains(&path[0]) {
-                        self.monsters[i].x = path[0].0;
-                        self.monsters[i].y = path[0].1;
-                    }
-                }
-            }
-        }
-
-        false
-    }
-
-    fn damage_monster(&mut self, idx: usize, amount: i32) {
-        self.monsters[idx].hp -= amount;
-
-        //spawn text
-        let (sx, sy) = to_screen(self.monsters[idx].x, self.monsters[idx].y, self.cam);
-        self.texts.push(DmgText {
-            x: sx,
-            y: sy - 40.,
-            dmg: amount,
-            life: 1.,
-        });
-
-        //kill logic
-        if self.monsters[idx].hp <= 0 {
-            self.monsters.remove(idx);
-            //+50 bonus if I kill a monster
-            self.score += 50;
-        }
-    }
-
-    fn draw(&self) {
-        for y in 0..MAP {
-            for x in 0..MAP {
-                if self.map[y][x] == Tile::Wall {
-                    draw_wall(x, y, self.cam);
-                } else {
-                    if self.gold.contains(&(x, y)) {
-                        let (sx, sy) = to_screen(x, y, self.cam);
-                        draw_circle(sx, sy + 16., 6., GOLD)
-                    } else {
-                        let (sx, sy) = to_screen(x, y, self.cam);
-                        draw_circle(sx, sy + 16., 2., LIGHTGRAY);
-                    }
-                }
-            }
-        }
-
-        //draw the path
-        for (px, py) in &self.path {
-            let (sx, sy) = to_screen(*px, *py, self.cam);
-            draw_circle(sx, sy + 16., 4., GOLD);
-        }
-
-        //draw the crab
-        draw_crab(self.px, self.py, self.cam);
-
-        //draw c++
-        for m in &self.monsters {
-            draw_enemy(m.x, m.y, self.cam);
-        }
-
-        //draw floating texts
-        for t in &self.texts {
-            if t.dmg < 0 {
-                draw_text(&format!("+{}", -t.dmg), t.x, t.y, 20., GREEN);
-            } else {
-                draw_text(&format!("-{}", t.dmg), t.x, t.y, 20., RED);
-            }
-        }
-
-        //HUD
-        draw_text(
-            &format!("HP: {}", self.hp),
-            20.,
-            screen_height() - 40.,
-            30.,
-            BLACK,
-        );
-
-        draw_text(
-            &format!("SCORE: {}", self.score),
-            20.,
-            screen_height() - 70.,
-            30.,
-            BLACK,
-        );
-    }
+fn overlay(title: &str, detail: &str, color: Color) {
+    draw_rectangle(0., 0., W, H, Color::new(0.02, 0.03, 0.07, 0.87));
+    panel(Rect::new(124., 105., 392., 192.), color);
+    centered(title, 320., 151., 3., color);
+    centered(detail, 320., 191., 1., INK);
 }
-#[macroquad::main("Crablo")]
+
+#[macroquad::main(window_conf)]
 async fn main() {
-    let mut game = Game::new();
+    let art = Art::new();
+    let target = render_target(W as u32, H as u32);
+    target.texture.set_filter(FilterMode::Nearest);
+    let mut camera = Camera2D::from_display_rect(Rect::new(0., 0., W, H));
+    camera.render_target = Some(target.clone());
     let mut state = AppState::Menu;
+    let mut selected = 2;
+    let mut game = Game::new(selected);
+    let mut fullscreen = window_conf().fullscreen;
 
     loop {
-        clear_background(WHITE);
-
+        if is_key_pressed(KeyCode::F11) {
+            fullscreen = !fullscreen;
+            set_fullscreen(fullscreen);
+        }
+        // Fit the available space without rounding down to a smaller integer scale.
+        // Use the same transform for rendering and mouse input.
+        let scale = (screen_width() / W).min(screen_height() / H).max(0.1);
+        let offset = vec2(
+            (screen_width() - W * scale) / 2.,
+            (screen_height() - H * scale) / 2.,
+        );
+        let mouse = (Vec2::from(mouse_position()) - offset) / scale;
+        let time = get_time() as f32;
+        set_camera(&camera);
         match state {
             AppState::Menu => {
-                draw_text("Menu - Enter to start", 100., 100., 40., BLACK);
-                if is_key_pressed(KeyCode::Enter) {
-                    game = Game::new();
+                if menu(&art, &mut selected, &mut fullscreen, mouse, time) {
+                    game = Game::new(selected);
                     state = AppState::Playing;
                 }
             }
             AppState::Playing => {
-                if game.update(get_frame_time()) {
-                    state = AppState::GameOver;
-                }
-                game.draw();
-            }
-            AppState::GameOver => {
-                game.draw();
-                draw_rectangle(
-                    0.,
-                    0.,
-                    screen_width(),
-                    screen_height(),
-                    Color::new(1., 1., 1., 0.7),
-                );
-                //Victory vs Defeat Logic
-                let (msg, col) = if game.hp > 0 {
-                    ("VICTORY", GREEN)
+                if is_key_pressed(KeyCode::Escape) {
+                    state = AppState::Paused;
                 } else {
-                    ("GAME OVER", RED)
-                };
-
-                draw_text(
-                    msg,
-                    screen_width() / 2. - 100.,
-                    screen_height() / 2.,
-                    60.,
-                    col,
+                    match game.update(get_frame_time(), mouse) {
+                        Outcome::Defeat => state = AppState::GameOver,
+                        Outcome::Cleared => {
+                            state = if game.level_index + 1 == levels::LEVEL_COUNT {
+                                AppState::Victory
+                            } else {
+                                AppState::LevelClear
+                            }
+                        }
+                        Outcome::Running => {}
+                    }
+                }
+                game.draw(&art, mouse, time);
+            }
+            AppState::Paused => {
+                game.draw(&art, vec2(-100., -100.), time);
+                overlay("PAUSA", "", PURPLE);
+                if button(
+                    Rect::new(190., 224., 260., 24.),
+                    "CONTINUAR  /  ESC",
+                    mouse,
+                    LIME,
+                ) || is_key_pressed(KeyCode::Escape)
+                {
+                    state = AppState::Playing;
+                }
+                if button(
+                    Rect::new(190., 260., 260., 20.),
+                    "VOLVER AL INICIO",
+                    mouse,
+                    MUTED,
+                ) {
+                    state = AppState::Menu;
+                }
+            }
+            AppState::LevelClear => {
+                game.draw(&art, vec2(-100., -100.), time);
+                overlay(
+                    "SECTOR LIBRE",
+                    &format!("SIGUIENTE: {}", levels::level(game.level_index + 1).name),
+                    LIME,
                 );
-
-                draw_text(
-                    &format!("Final Score: {}", game.score),
-                    screen_width() / 2. - 80.,
-                    screen_height() / 2. + 50.,
-                    30.,
-                    BLACK,
+                centered("+25 VIDA   /   +250 PUNTOS", 320., 213., 1., GOLD);
+                if button(
+                    Rect::new(190., 242., 260., 28.),
+                    "SIGUIENTE NIVEL  /  ENTER",
+                    mouse,
+                    LIME,
+                ) || is_key_pressed(KeyCode::Enter)
+                {
+                    game.advance();
+                    state = AppState::Playing;
+                }
+            }
+            AppState::Victory | AppState::GameOver => {
+                game.draw(&art, vec2(-100., -100.), time);
+                let victory = matches!(state, AppState::Victory);
+                overlay(
+                    if victory { "LIBERTAD!" } else { "TE ATRAPARON" },
+                    if victory {
+                        "Completaste todos los niveles."
+                    } else {
+                        ""
+                    },
+                    if victory { LIME } else { CORAL },
                 );
-
-                draw_text(
-                    "Enter to reset",
-                    screen_width() / 2. - 80.,
-                    screen_height() / 2. + 90.,
-                    20.,
-                    GRAY,
+                centered(
+                    &format!(
+                        "PUNTOS {:05}  /  SECTOR {:02}",
+                        game.score,
+                        game.level_index + 1
+                    ),
+                    320.,
+                    214.,
+                    1.,
+                    GOLD,
                 );
-
-                if is_key_pressed(KeyCode::Enter) {
+                if button(
+                    Rect::new(190., 242., 260., 28.),
+                    "VOLVER AL INICIO  /  ENTER",
+                    mouse,
+                    if victory { LIME } else { CORAL },
+                ) || is_key_pressed(KeyCode::Enter)
+                {
                     state = AppState::Menu;
                 }
             }
         }
+        set_default_camera();
+        clear_background(BG);
+        draw_texture_ex(
+            &target.texture,
+            offset.x,
+            offset.y,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(W, H) * scale),
+                flip_y: true,
+                ..Default::default()
+            },
+        );
         next_frame().await;
     }
 }
